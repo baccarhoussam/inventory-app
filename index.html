@@ -3,7 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inventory App — Resale Stock</title>
+<title>Inventory App — Resale Stock (Supabase)</title>
+<!--
+  SUPABASE SETUP — read before publishing to GitHub Pages
+  -------------------------------------------------------
+  1. In Supabase (free tier): create a project, then run this SQL in SQL Editor:
+       create table public.items (
+         id uuid primary key default gen_random_uuid(),
+         name text not null,
+         category text,
+         quantity int not null default 1,
+         location text,
+         notes text,
+         price numeric not null default 0,
+         photo_url text,
+         created_at timestamptz not null default now(),
+         updated_at timestamptz not null default now()
+       );
+       alter table public.items enable row level security;
+       create policy "public read"  on public.items for select using (true);
+       create policy "public write" on public.items for insert with check (true);
+       create policy "public update" on public.items for update using (true) with check (true);
+       create policy "public delete" on public.items for delete using (true);
+     NOTE: the policies above are open (anyone with the link can read/write).
+     For a private shop, add Supabase Auth and tighten RLS before sharing the link.
+  2. Storage: create a PUBLIC bucket named "photos", then add storage policies
+     allowing public read and anon insert/update/delete on that bucket.
+  3. In this file, replace https://fcjefdejasssyapseitx.supabase.co and eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjamVmZGVqYXNzc3lhcHNlaXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MzYxNjksImV4cCI6MjEwODUxMjE2OX0.L2L2roaSdjvZ6TAawGvbQnOFQZ9dpQRAJq_NUTdUMr0 below
+     with your project's URL and anon (public) key — never the service_role key.
+     Until you do, the app shows a notice and works offline in localStorage.
+  4. Publish this file as index.html on GitHub Pages (or keep it as
+     supabase-index.html and rename it to index.html when ready).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box} :root{--bg:#f8f7f4;--card:#fff;--ink:#1c1917;--mut:#78716c;--line:#e7e5e4;--acc:#ea580c;--acc2:#fff7ed;--red:#dc2626;--green:#16a34a;--rad:16px}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
@@ -13,17 +45,21 @@ header{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0
 h1{font-size:22px;margin:0} h1 span{color:var(--acc)} .sub{color:var(--mut);font-size:13px;margin-top:2px}
 select,input,textarea,button{font:inherit} button{cursor:pointer;border:0;border-radius:999px;padding:10px 16px;font-weight:600}
 .btn{background:var(--acc);color:#fff}.btn:hover{filter:brightness(.95)} .ghost{background:#fff;border:1px solid var(--line);color:var(--ink)} .danger{background:#fef2f2;color:var(--red);border:1px solid #fecaca}
+.notice{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px}
+.notice.ok{background:#f0fdf4;border-color:#bbf7d0}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);padding:14px}.stat b{font-size:22px;display:block}.stat span{color:var(--mut);font-size:13px}
 .toolbar{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);padding:14px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:10px}
 .toolbar input,.toolbar select,.field input,.field select,.field textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;display:flex;flex-direction:column}
-.ph{height:160px;background:var(--acc2);display:flex;align-items:center;justify-content:center;font-size:42px;color:#fdba74}.ph img{width:100%;height:100%;object-fit:cover}
+.ph{height:160px;background:var(--acc2);display:flex;align-items:center;justify-content:center;font-size:42px;color:#fdba74;cursor:pointer}.ph img{width:100%;height:100%;object-fit:cover}
 .body{padding:14px;flex:1;display:flex;flex-direction:column;gap:6px}.name{font-weight:700;font-size:16px}.meta{color:var(--mut);font-size:13px;line-height:1.5}.price{font-weight:800;color:var(--acc);font-size:17px}
 .pill{display:inline-block;background:var(--acc2);color:#9a3412;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700}
 .qty{display:flex;align-items:center;gap:10px;margin-top:auto;padding-top:8px}.qty button{width:36px;height:36px;padding:0;border-radius:50%;background:#f5f5f4;border:1px solid var(--line);font-size:18px}.qty b{min-width:28px;text-align:center}
 .actions{display:flex;gap:8px;padding:0 14px 14px}.actions button{flex:1;padding:9px}
+.pager{display:flex;gap:8px;align-items:center;justify-content:center;margin:18px 0;flex-wrap:wrap}
+.pager .ghost{padding:8px 14px}
 dialog{border:0;border-radius:18px;padding:0;width:min(560px,94vw);max-height:90vh;overflow:auto} dialog::backdrop{background:rgba(0,0,0,.45)}
 form{padding:20px}.field{margin-bottom:12px}.field label{display:block;font-weight:600;font-size:13px;margin-bottom:6px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.empty{text-align:center;padding:50px 20px;color:var(--mut);background:#fff;border:1px dashed var(--line);border-radius:var(--rad);margin-top:16px}
@@ -33,16 +69,19 @@ form{padding:20px}.field{margin-bottom:12px}.field label{display:block;font-weig
 </head>
 <body>
 <header><div class="wrap"><div class="hrow">
-<div><h1>📦 <span data-i="title">Inventory</span></h1><div class="sub" data-i="sub">Resale stock at home — works offline, saved in this browser</div></div>
+<div><h1>📦 <span data-i="title">Inventory</span></h1><div class="sub" data-i="sub">Resale stock at home — synced with Supabase, works offline in this browser when not configured</div></div>
 <div style="display:flex;gap:8px;align-items:center">
 <label class="sub" data-i="language">Language</label>
 <select id="lang" style="padding:9px;border:1px solid var(--line);border-radius:999px"><option value="en">English</option><option value="fr">Français</option><option value="ar">العربية</option></select>
 <button class="btn" id="addBtn">＋ <span data-i="add">Add item</span></button>
 </div></div>
+<div id="syncNotice" class="notice"></div>
 <div class="menu">
 <button class="ghost small" id="exportBtn">⬇ <span data-i="export">Export CSV</span></button>
 <label class="ghost small" style="cursor:pointer;border-radius:999px;padding:8px 12px;font-weight:600">⬆ <span data-i="import">Import CSV</span><input type="file" id="importFile" accept=".csv,text/csv" hidden></label>
 <button class="ghost small" id="tplBtn">🧾 <span data-i="template">CSV Template</span></button>
+<button class="ghost small" id="exportJsonBtn">⬇ <span data-i="exportJson">Full backup (JSON)</span></button>
+<label class="ghost small" style="cursor:pointer;border-radius:999px;padding:8px 12px;font-weight:600">⬆ <span data-i="importJson">Restore JSON</span><input type="file" id="importJsonFile" accept=".json,application/json" hidden></label>
 <button class="ghost small" id="clearBtn" style="color:var(--red)">🗑 <span data-i="clear">Clear all</span></button>
 </div></div></header>
 <main class="wrap">
@@ -59,7 +98,12 @@ form{padding:20px}.field{margin-bottom:12px}.field label{display:block;font-weig
 </div>
 <div id="list" class="grid"></div>
 <div id="empty" class="empty" style="display:none"><div style="font-size:40px">📦</div><p data-i="empty">No items yet. Tap “Add item” to add your first resale item.</p></div>
-<p class="sub" style="margin-top:16px" data-i="saveNote">Saved automatically in this browser (localStorage). Export a CSV regularly as a backup — photos are stored only in this browser, not in the CSV.</p>
+<div class="pager" id="pager">
+<button class="ghost" id="prevPage">‹ <span data-i="prev">Previous</span></button>
+<span id="pageInfo" class="sub"></span>
+<button class="ghost" id="nextPage"><span data-i="next">Next</span> ›</button>
+</div>
+<p class="sub" style="margin-top:16px" data-i="saveNote">When Supabase is configured, items and photos sync across PC, iPad and phone. When it is not configured, items are saved in this browser (localStorage) only. Export a full JSON backup regularly — it includes photos.</p>
 </main>
 
 <dialog id="dlg"><form id="form" method="dialog">
@@ -78,76 +122,244 @@ form{padding:20px}.field{margin-bottom:12px}.field label{display:block;font-weig
 <div class="field"><label data-i="notes">Notes</label><textarea id="fNotes" rows="3" placeholder="Condition, size, where listed…"></textarea></div>
 <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="ghost" id="cancelBtn" data-i="cancel">Cancel</button><button class="btn" type="submit" data-i="save">Save</button></div>
 </form></dialog>
+<dialog id="viewDlg"><div style="padding:16px"><img id="viewImg" src="" alt="" style="max-width:100%;border-radius:12px;display:block"><div id="viewName" class="name" style="margin-top:10px"></div><div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="ghost" id="viewClose">Close</button></div></div></dialog>
+<script>
+/* ===== SUPABASE CONFIG — replace the two placeholders below ===== */
+const SUPABASE_URL = 'https://fcjefdejasssyapseitx.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjamVmZGVqYXNzc3lhcHNlaXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MzYxNjksImV4cCI6MjEwODUxMjE2OX0.L2L2roaSdjvZ6TAawGvbQnOFQZ9dpQRAJq_NUTdUMr0';
+/* ================================================================ */
+const PAGE_SIZE = 50;
+const BUCKET = 'photos';
+const isSupabaseConfigured = SUPABASE_URL && SUPABASE_URL !== 'https://fcjefdejasssyapseitx.supabase.co' && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjamVmZGVqYXNzc3lhcHNlaXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MzYxNjksImV4cCI6MjEwODUxMjE2OX0.L2L2roaSdjvZ6TAawGvbQnOFQZ9dpQRAJq_NUTdUMr0' && typeof window.supabase !== 'undefined';
+let sb = null;
+if (isSupabaseConfigured) { try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { sb = null; } }
+const USE_SUPABASE = !!sb;
+</script>
 <script>
 const T={
-en:{title:"Inventory",sub:"Resale stock at home — works offline, saved in this browser",language:"Language",add:"Add item",export:"Export CSV",import:"Import CSV",template:"CSV Template",clear:"Clear all",totalItems:"Different items",totalQty:"Total quantity",totalVal:"Total stock value",searchPh:"Search name, location, notes…",allCat:"All categories",reset:"Reset",empty:"No items yet. Tap “Add item” to add your first resale item.",saveNote:"Saved automatically in this browser (localStorage). Export a CSV regularly as a backup — photos are stored only in this browser, not in the CSV.",name:"Name *",category:"Category",price:"Price ($)",quantity:"Quantity",location:"Location (at home)",locPh:"Closet, garage shelf, box 1…",photo:"Photo",notes:"Notes",cancel:"Cancel",save:"Save",edit:"Edit",del:"Delete",addTitle:"Add item",editTitle:"Edit item",confirmDel:"Delete this item?",confirmClear:"Delete ALL items? Export a CSV backup first if needed.",imported:"items imported.",importFail:"Could not import that file. Check it is a CSV with the template headers.",sort_newest:"Sort: Newest first",sort_name:"Sort: Name A–Z",sort_priceAsc:"Sort: Price low → high",sort_priceDesc:"Sort: Price high → low",sort_qtyDesc:"Sort: Quantity high → low",sort_qtyAsc:"Sort: Quantity low → high",sort_category:"Sort: Category",notesPh:"Condition, size, where listed…"},
-fr:{title:"Inventaire",sub:"Stock à revendre à la maison — fonctionne hors ligne, enregistré dans ce navigateur",language:"Langue",add:"Ajouter",export:"Exporter CSV",import:"Importer CSV",template:"Modèle CSV",clear:"Tout effacer",totalItems:"Articles différents",totalQty:"Quantité totale",totalVal:"Valeur totale du stock",searchPh:"Rechercher nom, lieu, notes…",allCat:"Toutes les catégories",reset:"Réinitialiser",empty:"Aucun article. Touchez « Ajouter » pour ajouter votre premier article.",saveNote:"Enregistré automatiquement dans ce navigateur (localStorage). Exportez un CSV régulièrement comme sauvegarde — les photos restent uniquement dans ce navigateur, pas dans le CSV.",name:"Nom *",category:"Catégorie",price:"Prix ($)",quantity:"Quantité",location:"Emplacement (à la maison)",locPh:"Placard, étagère du garage, boîte 1…",photo:"Photo",notes:"Notes",cancel:"Annuler",save:"Enregistrer",edit:"Modifier",del:"Supprimer",addTitle:"Ajouter un article",editTitle:"Modifier l'article",confirmDel:"Supprimer cet article ?",confirmClear:"Supprimer TOUS les articles ? Exportez d'abord une sauvegarde CSV si besoin.",imported:"articles importés.",importFail:"Impossible d'importer ce fichier. Vérifiez que c'est un CSV avec les en-têtes du modèle.",sort_newest:"Tri : Plus récents",sort_name:"Tri : Nom A–Z",sort_priceAsc:"Tri : Prix croissant",sort_priceDesc:"Tri : Prix décroissant",sort_qtyDesc:"Tri : Quantité décroissante",sort_qtyAsc:"Tri : Quantité croissante",sort_category:"Tri : Catégorie",notesPh:"État, taille, où il est annoncé…"},
-ar:{title:"المخزون",sub:"مخزون لإعادة البيع من المنزل — يعمل بدون إنترنت، محفوظ في هذا المتصفح",language:"اللغة",add:"إضافة عنصر",export:"تصدير CSV",import:"استيراد CSV",template:"قالب CSV",clear:"مسح الكل",totalItems:"عناصر مختلفة",totalQty:"الكمية الإجمالية",totalVal:"القيمة الإجمالية",searchPh:"ابحث بالاسم أو المكان أو الملاحظات…",allCat:"كل الفئات",reset:"إعادة تعيين",empty:"لا توجد عناصر بعد. اضغط «إضافة عنصر» لإضافة أول عنصر.",saveNote:"يُحفظ تلقائيًا في هذا المتصفح (localStorage). صدّر CSV بانتظام كنسخة احتياطية — الصور محفوظة في المتصفح فقط، وليست في CSV.",name:"الاسم *",category:"الفئة",price:"السعر ($)",quantity:"الكمية",location:"المكان (في المنزل)",locPh:"خزانة، رف المرآب، صندوق 1…",photo:"صورة",notes:"ملاحظات",cancel:"إلغاء",save:"حفظ",edit:"تعديل",del:"حذف",addTitle:"إضافة عنصر",editTitle:"تعديل العنصر",confirmDel:"حذف هذا العنصر؟",confirmClear:"حذف كل العناصر؟ صدّر نسخة CSV أولًا إذا لزم الأمر.",imported:"عنصر تم استيراده.",importFail:"تعذر استيراد الملف. تأكد أنه CSV بنفس عناوين القالب.",sort_newest:"الترتيب: الأحدث أولًا",sort_name:"الترتيب: الاسم أ–ي",sort_priceAsc:"الترتيب: السعر من الأقل",sort_priceDesc:"الترتيب: السعر من الأعلى",sort_qtyDesc:"الترتيب: الكمية من الأعلى",sort_qtyAsc:"الترتيب: الكمية من الأقل",sort_category:"الترتيب: الفئة",notesPh:"الحالة، المقاس، أين معروض…"}
+en:{title:"Inventory",sub:"Resale stock at home — synced with Supabase, works offline in this browser when not configured",language:"Language",add:"Add item",export:"Export CSV",import:"Import CSV",template:"CSV Template",exportJson:"Full backup (JSON)",importJson:"Restore JSON",clear:"Clear all",totalItems:"Different items",totalQty:"Total quantity",totalVal:"Total stock value",searchPh:"Search name, location, notes…",allCat:"All categories",reset:"Reset",empty:"No items yet. Tap “Add item” to add your first resale item.",saveNote:"When Supabase is configured, items and photos sync across PC, iPad and phone. When it is not configured, items are saved in this browser (localStorage) only. Export a full JSON backup regularly — it includes photos.",name:"Name *",category:"Category",price:"Price ($)",quantity:"Quantity",location:"Location (at home)",locPh:"Closet, garage shelf, box 1…",photo:"Photo",notes:"Notes",cancel:"Cancel",save:"Save",edit:"Edit",del:"Delete",addTitle:"Add item",editTitle:"Edit item",confirmDel:"Delete this item?",confirmClear:"Delete ALL items? Export a full JSON backup first if needed.",imported:"items imported.",importFail:"Could not import that file. Check it is a CSV with the template headers.",jsonImported:"items restored from JSON.",jsonFail:"Could not restore that file. Check it is a JSON backup from this app.",sort_newest:"Sort: Newest first",sort_name:"Sort: Name A–Z",sort_priceAsc:"Sort: Price low → high",sort_priceDesc:"Sort: Price high → low",sort_qtyDesc:"Sort: Quantity high → low",sort_qtyAsc:"Sort: Quantity low → high",sort_category:"Sort: Category",notesPh:"Condition, size, where listed…",prev:"Previous",next:"Next",page:"Page",of:"of",offlineNotice:"⚠️ Supabase is not configured yet — working offline in this browser only. Set SUPABASE_URL and SUPABASE_ANON_KEY at the top of the script to sync across devices.",onlineNotice:"✓ Synced with Supabase — items and photos are shared across PC, iPad and phone.",loading:"Loading…",error:"Something went wrong. Please try again."},
+fr:{title:"Inventaire",sub:"Stock à revendre à la maison — synchronisé avec Supabase, fonctionne hors ligne dans ce navigateur si non configuré",language:"Langue",add:"Ajouter",export:"Exporter CSV",import:"Importer CSV",template:"Modèle CSV",exportJson:"Sauvegarde complète (JSON)",importJson:"Restaurer JSON",clear:"Tout effacer",totalItems:"Articles différents",totalQty:"Quantité totale",totalVal:"Valeur totale du stock",searchPh:"Rechercher nom, lieu, notes…",allCat:"Toutes les catégories",reset:"Réinitialiser",empty:"Aucun article. Touchez « Ajouter » pour ajouter votre premier article.",saveNote:"Quand Supabase est configuré, les articles et photos sont synchronisés sur PC, iPad et téléphone. Sinon, ils sont enregistrés dans ce navigateur (localStorage) seulement. Exportez régulièrement une sauvegarde JSON complète — elle inclut les photos.",name:"Nom *",category:"Catégorie",price:"Prix ($)",quantity:"Quantité",location:"Emplacement (à la maison)",locPh:"Placard, étagère du garage, boîte 1…",photo:"Photo",notes:"Notes",cancel:"Annuler",save:"Enregistrer",edit:"Modifier",del:"Supprimer",addTitle:"Ajouter un article",editTitle:"Modifier l'article",confirmDel:"Supprimer cet article ?",confirmClear:"Supprimer TOUS les articles ? Exportez d'abord une sauvegarde JSON complète si besoin.",imported:"articles importés.",importFail:"Impossible d'importer ce fichier. Vérifiez que c'est un CSV avec les en-têtes du modèle.",jsonImported:"articles restaurés depuis JSON.",jsonFail:"Impossible de restaurer ce fichier. Vérifiez que c'est une sauvegarde JSON de cette appli.",sort_newest:"Tri : Plus récents",sort_name:"Tri : Nom A–Z",sort_priceAsc:"Tri : Prix croissant",sort_priceDesc:"Tri : Prix décroissant",sort_qtyDesc:"Tri : Quantité décroissante",sort_qtyAsc:"Tri : Quantité croissante",sort_category:"Tri : Catégorie",notesPh:"État, taille, où il est annoncé…",prev:"Précédent",next:"Suivant",page:"Page",of:"sur",offlineNotice:"⚠️ Supabase n'est pas encore configuré — fonctionne hors ligne dans ce navigateur seulement. Définissez SUPABASE_URL et SUPABASE_ANON_KEY en haut du script pour synchroniser vos appareils.",onlineNotice:"✓ Synchronisé avec Supabase — articles et photos partagés sur PC, iPad et téléphone.",loading:"Chargement…",error:"Une erreur est survenue. Veuillez réessayer."},
+ar:{title:"المخزون",sub:"مخزون لإعادة البيع من المنزل — تتم مزامنته مع Supabase، ويعمل بدون إنترنت في هذا المتصفح عند عدم تكوينه",language:"اللغة",add:"إضافة عنصر",export:"تصدير CSV",import:"استيراد CSV",template:"قالب CSV",exportJson:"نسخة احتياطية كاملة (JSON)",importJson:"استعادة JSON",clear:"مسح الكل",totalItems:"عناصر مختلفة",totalQty:"الكمية الإجمالية",totalVal:"القيمة الإجمالية",searchPh:"ابحث بالاسم أو المكان أو الملاحظات…",allCat:"كل الفئات",reset:"إعادة تعيين",empty:"لا توجد عناصر بعد. اضغط «إضافة عنصر» لإضافة أول عنصر.",saveNote:"عند تكوين Supabase، تتم مزامنة العناصر والصور عبر الحاسوب والآيباد والهاتف. وعند عدم تكوينه، تُحفظ في هذا المتصفح (localStorage) فقط. صدّر نسخة JSON كاملة بانتظام — فهي تشمل الصور.",name:"الاسم *",category:"الفئة",price:"السعر ($)",quantity:"الكمية",location:"المكان (في المنزل)",locPh:"خزانة، رف المرآب، صندوق 1…",photo:"صورة",notes:"ملاحظات",cancel:"إلغاء",save:"حفظ",edit:"تعديل",del:"حذف",addTitle:"إضافة عنصر",editTitle:"تعديل العنصر",confirmDel:"حذف هذا العنصر؟",confirmClear:"حذف كل العناصر؟ صدّر نسخة JSON كاملة أولًا إذا لزم الأمر.",imported:"عنصر تم استيراده.",importFail:"تعذر استيراد الملف. تأكد أنه CSV بنفس عناوين القالب.",jsonImported:"عنصر تمت استعادته من JSON.",jsonFail:"تعذر استعادة الملف. تأكد أنه نسخة JSON احتياطية من هذا التطبيق.",sort_newest:"الترتيب: الأحدث أولًا",sort_name:"الترتيب: الاسم أ–ي",sort_priceAsc:"الترتيب: السعر من الأقل",sort_priceDesc:"الترتيب: السعر من الأعلى",sort_qtyDesc:"الترتيب: الكمية من الأعلى",sort_qtyAsc:"الترتيب: الكمية من الأقل",sort_category:"الترتيب: الفئة",notesPh:"الحالة، المقاس، أين معروض…",prev:"السابق",next:"التالي",page:"صفحة",of:"من",offlineNotice:"⚠️ لم يتم تكوين Supabase بعد — يعمل بدون إنترنت في هذا المتصفح فقط. عيّن SUPABASE_URL و SUPABASE_ANON_KEY في أعلى السكربت للمزامنة عبر الأجهزة.",onlineNotice:"✓ تمت المزامنة مع Supabase — العناصر والصور مشتركة عبر الحاسوب والآيباد والهاتف.",loading:"جارٍ التحميل…",error:"حدث خطأ ما. حاول مرة أخرى."}
 };
 let lang=localStorage.getItem('inv_lang')||'en';
-let items=[]; try{items=JSON.parse(localStorage.getItem('inv_items')||'[]')}catch(e){items=[]}
-let photoData='';
+let items=[];           // current page of items (both modes)
+let allLocal=[];        // local mode: full list in memory
+let totalCount=0, page=1, totalPages=1;
+let photoData='';       // new photo as data URL (local) or blob source (Supabase)
+let photoBlob=null;
+try{allLocal=JSON.parse(localStorage.getItem('inv_items')||'[]')}catch(e){allLocal=[]}
 const $=id=>document.getElementById(id);
 function t(k){return (T[lang]&&T[lang][k])||T.en[k]||k}
-function save(){localStorage.setItem('inv_items',JSON.stringify(items));localStorage.setItem('inv_lang',lang)}
+function saveLocal(){localStorage.setItem('inv_items',JSON.stringify(allLocal));localStorage.setItem('inv_lang',lang)}
 function money(n){return '$'+Number(n||0).toFixed(2)}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function thumbUrl(it){ if(!it.photo) return ''; if(it.photo.startsWith('http') && it.photo.includes('/photos/')) return it.photo.replace(/\.jpg(\?|$)/,'-thumb.jpg$1'); return it.photo; }
+function fullUrl(it){ return it.photo||''; }
+function toAppItem(row){ return {id:String(row.id), name:row.name||'', category:row.category||'', qty:Number(row.quantity||0), location:row.location||'', notes:row.notes||'', price:Number(row.price||0), photo:row.photo_url||'', created:row.created_at?new Date(row.created_at).getTime():Date.now()}; }
+function toDbRow(it){ return {name:it.name, category:it.category||null, quantity:Math.max(0,parseInt(it.qty)||0), location:it.location||null, notes:it.notes||null, price:Number(it.price||0), photo_url:it.photo||null, updated_at:new Date().toISOString()}; }
+
+/* Photo: compress in-browser to max 800px JPEG ~0.82, plus a 200px thumbnail.
+   Target is roughly 150KB per photo; quality is lowered if the first pass is too large. */
+function compressImage(file, maxDim, quality){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const s=Math.min(1,maxDim/Math.max(img.width,img.height));
+      const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(img.width*s)); c.height=Math.max(1,Math.round(img.height*s));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(img.src);
+      c.toBlob(b=>b?resolve(b):reject(new Error('compress failed')),'image/jpeg',quality);
+    };
+    img.onerror=reject; img.src=URL.createObjectURL(file);
+  });
+}
+async function preparePhoto(file){
+  let blob=await compressImage(file,800,0.82);
+  if(blob.size>170000) blob=await compressImage(file,800,0.6);
+  const thumb=await compressImage(file,200,0.75);
+  const dataUrl=await new Promise(res=>{const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob);});
+  return {blob, thumb, dataUrl};
+}
+async function uploadPhoto(itemId, prep){
+  if(!sb) return prep.dataUrl;
+  const base='items/'+itemId+'/'+Date.now();
+  const up1=await sb.storage.from(BUCKET).upload(base+'.jpg', prep.blob, {contentType:'image/jpeg', upsert:true});
+  if(up1.error) throw up1.error;
+  await sb.storage.from(BUCKET).upload(base+'-thumb.jpg', prep.thumb, {contentType:'image/jpeg', upsert:true});
+  const pub=sb.storage.from(BUCKET).getPublicUrl(base+'.jpg');
+  return pub.data.publicUrl;
+}
 </script>
 <script>
 function applyLang(){
- document.documentElement.lang=lang; document.documentElement.dir=(lang==='ar'?'rtl':'ltr'); $('lang').value=lang;
- document.querySelectorAll('[data-i]').forEach(el=>el.textContent=t(el.dataset.i));
- document.querySelectorAll('[data-ph]').forEach(el=>el.placeholder=t(el.dataset.ph));
- $('fNotes').placeholder=t('notesPh');
- const s=$('sort'); [...s.options].forEach(o=>o.textContent=t('sort_'+o.value));
- render();
+  document.documentElement.lang=lang; document.documentElement.dir=(lang==='ar'?'rtl':'ltr'); $('lang').value=lang;
+  document.querySelectorAll('[data-i]').forEach(el=>el.textContent=t(el.dataset.i));
+  document.querySelectorAll('[data-ph]').forEach(el=>el.placeholder=t(el.dataset.ph));
+  $('fNotes').placeholder=t('notesPh');
+  const s=$('sort'); [...s.options].forEach(o=>o.textContent=t('sort_'+o.value));
+  const n=$('syncNotice'); n.textContent=USE_SUPABASE?t('onlineNotice'):t('offlineNotice'); n.classList.toggle('ok',USE_SUPABASE);
+  render();
 }
-function cats(){return [...new Set(items.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
+function sortSpec(){
+  const v=$('sort').value;
+  return {newest:['created_at',false],name:['name',true],priceAsc:['price',true],priceDesc:['price',false],qtyDesc:['quantity',false],qtyAsc:['quantity',true],category:['category',true]}[v]||['created_at',false];
+}
+async function loadTotals(){
+  if(!USE_SUPABASE){ $('sItems').textContent=allLocal.length; $('sQty').textContent=allLocal.reduce((a,i)=>a+ +i.qty,0); $('sVal').textContent=money(allLocal.reduce((a,i)=>a+ +i.qty* +i.price,0)); return; }
+  try{
+    let rows=[], from=0; const step=1000;
+    while(true){ const r=await sb.from('items').select('quantity,price').range(from,from+step-1); if(r.error) throw r.error; rows=rows.concat(r.data||[]); if((r.data||[]).length<step) break; from+=step; }
+    $('sItems').textContent=rows.length; // distinct items = rows returned (each row is one item)
+    // distinct count is the row count above; quantity/value are sums:
+    $('sQty').textContent=rows.reduce((a,i)=>a+Number(i.quantity||0),0);
+    $('sVal').textContent=money(rows.reduce((a,i)=>a+Number(i.quantity||0)*Number(i.price||0),0));
+  }catch(e){ console.error(e); }
+}
+async function loadPage(){
+  const q=$('search').value.trim(), fc=$('filterCat').value;
+  if(!USE_SUPABASE){
+    let list=allLocal.filter(i=> (!fc||i.category===fc) && (!q||[i.name,i.category,i.location,i.notes].join(' ').toLowerCase().includes(q.toLowerCase())) );
+    const sv=$('sort').value;
+    if(sv==='name')list.sort((a,b)=>a.name.localeCompare(b.name)); else if(sv==='priceAsc')list.sort((a,b)=>a.price-b.price); else if(sv==='priceDesc')list.sort((a,b)=>b.price-a.price); else if(sv==='qtyDesc')list.sort((a,b)=>b.qty-a.qty); else if(sv==='qtyAsc')list.sort((a,b)=>a.qty-b.qty); else if(sv==='category')list.sort((a,b)=>(a.category||'').localeCompare(b.category||'')); else list.sort((a,b)=>b.created-a.created);
+    totalCount=list.length; totalPages=Math.max(1,Math.ceil(totalCount/PAGE_SIZE)); if(page>totalPages) page=totalPages;
+    items=list.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+    render(); return;
+  }
+  const [col,asc]=sortSpec();
+  let query=sb.from('items').select('*', {count:'exact'});
+  if(fc) query=query.eq('category',fc);
+  if(q){ const pat='%'+q.replace(/[%_\\]/g,'\\$&')+'%'; query=query.or('name.ilike.'+pat+',category.ilike.'+pat+',location.ilike.'+pat+',notes.ilike.'+pat); }
+  query=query.order(col,{ascending:asc}).range((page-1)*PAGE_SIZE, page*PAGE_SIZE-1);
+  const res=await query;
+  if(res.error){ console.error(res.error); alert(t('error')); items=[]; totalCount=0; }
+  else { items=(res.data||[]).map(toAppItem); totalCount=res.count||0; }
+  totalPages=Math.max(1,Math.ceil(totalCount/PAGE_SIZE)); if(page>totalPages) page=totalPages;
+  render();
+}
+async function loadCats(){
+  let cats=[];
+  if(!USE_SUPABASE){ cats=[...new Set(allLocal.map(i=>i.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }
+  else { try{ const r=await sb.from('items').select('category').not('category','is',null); if(!r.error) cats=[...new Set((r.data||[]).map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b)); }catch(e){} }
+  const cur=$('filterCat').value, el=$('filterCat');
+  el.innerHTML='<option value="">'+esc(t('allCat'))+'</option>'+cats.map(c=>'<option>'+esc(c)+'</option>').join('');
+  el.value=cats.includes(cur)?cur:'';
+}
 function render(){
- const q=$('search').value.trim().toLowerCase(), fc=$('filterCat').value, cur=$('filterCat').value;
- const fcEl=$('filterCat'); fcEl.innerHTML='<option value="">'+esc(t('allCat'))+'</option>'+cats().map(c=>'<option>'+esc(c)+'</option>').join(''); fcEl.value=cats().includes(cur)?cur:'';
- let list=items.filter(i=> (!fc||i.category===fc) && (!q||[i.name,i.category,i.location,i.notes].join(' ').toLowerCase().includes(q)) );
- const sv=$('sort').value;
- if(sv==='name')list.sort((a,b)=>a.name.localeCompare(b.name)); else if(sv==='priceAsc')list.sort((a,b)=>a.price-b.price); else if(sv==='priceDesc')list.sort((a,b)=>b.price-a.price); else if(sv==='qtyDesc')list.sort((a,b)=>b.qty-a.qty); else if(sv==='qtyAsc')list.sort((a,b)=>a.qty-b.qty); else if(sv==='category')list.sort((a,b)=>(a.category||'').localeCompare(b.category||'')); else list.sort((a,b)=>b.created-a.created);
- $('sItems').textContent=items.length; $('sQty').textContent=items.reduce((a,i)=>a+ +i.qty,0); $('sVal').textContent=money(items.reduce((a,i)=>a+ +i.qty* +i.price,0));
- $('empty').style.display=list.length?'none':'block';
- $('list').innerHTML=list.map(i=>`<article class="card"><div class="ph">${i.photo?`<img src="${i.photo}" alt="">`:'📷'}</div><div class="body">
- ${i.category?`<span class="pill">${esc(i.category)}</span>`:''}<div class="name">${esc(i.name)}</div><div class="price">${money(i.price)}</div>
- <div class="meta">${i.location?'📍 '+esc(i.location)+'<br>':''}${i.notes?esc(i.notes):''}</div>
- <div class="qty"><button onclick="chg('${i.id}',-1)" aria-label="minus">−</button><b>${i.qty}</b><button onclick="chg('${i.id}',1)" aria-label="plus">+</button><span class="meta">${esc(t('quantity'))}</span></div></div>
- <div class="actions"><button class="ghost" onclick="editItem('${i.id}')">${esc(t('edit'))}</button><button class="danger" onclick="delItem('${i.id}')">${esc(t('del'))}</button></div></article>`).join('');
+  $('empty').style.display=items.length?'none':'block';
+  $('pageInfo').textContent=t('page')+' '+page+' '+t('of')+' '+totalPages+' — '+totalCount+' '+(lang==='ar'?'عنصر':lang==='fr'?'articles':'items');
+  $('prevPage').disabled=page<=1; $('nextPage').disabled=page>=totalPages;
+  $('list').innerHTML=items.map(i=>`<article class="card"><div class="ph" onclick="viewItem('${i.id}')">${i.photo?`<img loading="lazy" src="${esc(thumbUrl(i))}" alt="">`:'📷'}</div><div class="body">
+  ${i.category?`<span class="pill">${esc(i.category)}</span>`:''}<div class="name">${esc(i.name)}</div><div class="price">${money(i.price)}</div>
+  <div class="meta">${i.location?'📍 '+esc(i.location)+'<br>':''}${i.notes?esc(i.notes):''}</div>
+  <div class="qty"><button onclick="chg('${i.id}',-1)" aria-label="minus">−</button><b>${i.qty}</b><button onclick="chg('${i.id}',1)" aria-label="plus">+</button><span class="meta">${esc(t('quantity'))}</span></div></div>
+  <div class="actions"><button class="ghost" onclick="editItem('${i.id}')">${esc(t('edit'))}</button><button class="danger" onclick="delItem('${i.id}')">${esc(t('del'))}</button></div></article>`).join('');
 }
-window.chg=(id,d)=>{const i=items.find(x=>x.id===id); if(!i)return; i.qty=Math.max(0,+i.qty+d); save(); render()};
-window.delItem=id=>{if(confirm(t('confirmDel'))){items=items.filter(x=>x.id!==id); save(); render()}};
-window.editItem=id=>{const i=items.find(x=>x.id===id); if(!i)return; $('dlgTitle').textContent=t('editTitle'); $('fId').value=i.id; $('fName').value=i.name; $('fCat').value=i.category||''; $('fPrice').value=i.price; $('fQty').value=i.qty; $('fLoc').value=i.location||''; $('fNotes').value=i.notes||''; photoData=i.photo||''; $('prev').innerHTML=photoData?`<img src="${photoData}" style="max-width:100%;height:120px;object-fit:cover;border-radius:12px">`:''; $('dlg').showModal()};
-$('addBtn').onclick=()=>{$('form').reset(); $('fId').value=''; $('fQty').value=1; $('fPrice').value=0; photoData=''; $('prev').innerHTML=''; $('dlgTitle').textContent=t('addTitle'); $('dlg').showModal()};
+window.viewItem=id=>{const i=items.find(x=>x.id===id); if(!i||!i.photo)return; $('viewImg').src=fullUrl(i); $('viewName').textContent=i.name; $('viewDlg').showModal()};
+$('viewClose').onclick=()=>$('viewDlg').close();
+window.chg=async(id,d)=>{
+  const i=items.find(x=>x.id===id); if(!i)return; const nq=Math.max(0,+i.qty+d); i.qty=nq;
+  if(USE_SUPABASE){ const r=await sb.from('items').update({quantity:nq, updated_at:new Date().toISOString()}).eq('id',id); if(r.error){alert(t('error')); return;} }
+  else { const ex=allLocal.find(x=>x.id===id); if(ex) ex.qty=nq; saveLocal(); }
+  render(); loadTotals();
+};
+window.delItem=async id=>{
+  if(!confirm(t('confirmDel'))) return;
+  if(USE_SUPABASE){ const r=await sb.from('items').delete().eq('id',id); if(r.error){alert(t('error')); return;} }
+  else { allLocal=allLocal.filter(x=>x.id!==id); saveLocal(); }
+  await refresh();
+};
+window.editItem=id=>{const i=items.find(x=>x.id===id); if(!i)return; $('dlgTitle').textContent=t('editTitle'); $('fId').value=i.id; $('fName').value=i.name; $('fCat').value=i.category||''; $('fPrice').value=i.price; $('fQty').value=i.qty; $('fLoc').value=i.location||''; $('fNotes').value=i.notes||''; photoData=i.photo||''; photoBlob=null; $('prev').innerHTML=photoData?`<img src="${esc(photoData)}" style="max-width:100%;height:120px;object-fit:cover;border-radius:12px">`:''; $('dlg').showModal()};
+$('addBtn').onclick=()=>{$('form').reset(); $('fId').value=''; $('fQty').value=1; $('fPrice').value=0; photoData=''; photoBlob=null; $('prev').innerHTML=''; $('dlgTitle').textContent=t('addTitle'); $('dlg').showModal()};
 $('cancelBtn').onclick=()=>$('dlg').close();
-$('fPhoto').onchange=e=>{const f=e.target.files[0]; if(!f)return; const img=new Image(); img.onload=()=>{const c=document.createElement('canvas'); const s=Math.min(1,800/Math.max(img.width,img.height)); c.width=img.width*s; c.height=img.height*s; c.getContext('2d').drawImage(img,0,0,c.width,c.height); photoData=c.toDataURL('image/jpeg',0.82); $('prev').innerHTML=`<img src="${photoData}" style="max-width:100%;height:120px;object-fit:cover;border-radius:12px">`; URL.revokeObjectURL(img.src)}; img.src=URL.createObjectURL(f)};
-$('form').onsubmit=e=>{e.preventDefault(); const id=$('fId').value|| (Date.now()+'-'+Math.random().toString(16).slice(2)); const data={id,name:$('fName').value.trim(),category:$('fCat').value.trim(),price:Number($('fPrice').value||0),qty:Math.max(0,parseInt($('fQty').value||0)),location:$('fLoc').value.trim(),notes:$('fNotes').value.trim(),photo:photoData,created:Date.now()}; if(!data.name)return; const ex=items.find(x=>x.id===id); if(ex){data.created=ex.created; Object.assign(ex,data)}else items.push(data); save(); $('dlg').close(); render()};
-['search','filterCat','sort'].forEach(id=>$(id).addEventListener('input',render));
-$('resetBtn').onclick=()=>{$('search').value=''; $('filterCat').value=''; $('sort').value='newest'; render()};
-$('lang').onchange=e=>{lang=e.target.value; save(); applyLang()};
-$('clearBtn').onclick=()=>{if(confirm(t('confirmClear'))){items=[]; save(); render()}};
+$('fPhoto').onchange=async e=>{const f=e.target.files[0]; if(!f)return; try{ const prep=await preparePhoto(f); photoBlob=prep; photoData=prep.dataUrl; $('prev').innerHTML=`<img src="${photoData}" style="max-width:100%;height:120px;object-fit:cover;border-radius:12px">`; }catch(err){ alert(t('error')); }};
+$('form').onsubmit=async e=>{
+  e.preventDefault();
+  const id=$('fId').value||crypto.randomUUID();
+  const data={id, name:$('fName').value.trim(), category:$('fCat').value.trim(), price:Number($('fPrice').value||0), qty:Math.max(0,parseInt($('fQty').value||0)), location:$('fLoc').value.trim(), notes:$('fNotes').value.trim(), photo:photoData, created:Date.now()};
+  if(!data.name) return;
+  if(USE_SUPABASE){
+    try{
+      let photoUrl=data.photo;
+      if(photoBlob){ photoUrl=await uploadPhoto(id, photoBlob); }
+      else if(data.photo && data.photo.startsWith('http')){ photoUrl=data.photo; }
+      else if(data.photo && !data.photo.startsWith('http')){ /* local data URL from a previous local-mode item: keep as-is only if no upload possible; try upload from data URL */ photoUrl=data.photo; }
+      const row=toDbRow({...data, photo:photoUrl});
+      if($('fId').value){ const r=await sb.from('items').update(row).eq('id',id); if(r.error) throw r.error; }
+      else { const r=await sb.from('items').insert({...row, id}); if(r.error) throw r.error; }
+    }catch(err){ console.error(err); alert(t('error')); return; }
+  } else {
+    const ex=allLocal.find(x=>x.id===id);
+    if(ex){ data.created=ex.created; Object.assign(ex,data); } else allLocal.push(data);
+    saveLocal();
+  }
+  $('dlg').close(); await refresh();
+};
+async function refresh(){ await loadCats(); await loadPage(); await loadTotals(); }
+['search','filterCat','sort'].forEach(id=>$(id).addEventListener('input',()=>{page=1; refresh();}));
+$('resetBtn').onclick=()=>{$('search').value=''; $('filterCat').value=''; $('sort').value='newest'; page=1; refresh()};
+$('prevPage').onclick=()=>{if(page>1){page--; loadPage();}};
+$('nextPage').onclick=()=>{if(page<totalPages){page++; loadPage();}};
+$('lang').onchange=e=>{lang=e.target.value; saveLocal(); applyLang()};
+$('clearBtn').onclick=async ()=>{
+  if(!confirm(t('confirmClear'))) return;
+  if(USE_SUPABASE){ const r=await sb.from('items').delete().neq('id','00000000-0000-0000-0000-000000000000'); if(r.error){alert(t('error')); return;} }
+  else { allLocal=[]; saveLocal(); }
+  page=1; await refresh();
+};
 </script>
 <script>
 const HEADERS=['name','category','quantity','location','notes','price'];
 function csvCell(v){v=String(v??''); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
-function download(name,text){const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function download(name,text,type){const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type:type||'text/csv;charset=utf-8'})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 function toCSV(rows){return HEADERS.join(',')+'\n'+rows.map(r=>HEADERS.map(h=>csvCell(h==='quantity'?r.qty:h==='price'?Number(r.price||0).toFixed(2):r[h])).join(',')).join('\n')}
-$('exportBtn').onclick=()=>download('inventory-export.csv',toCSV(items));
-$('tplBtn').onclick=()=>download('inventory-template.csv',HEADERS.join(',')+'\n'+'Example jacket,Clothing,1,Closet,"Good condition, size M",25.00\nExample headphones,Electronics,2,Box 1,"Tested and working",40.00\n');
-function parseCSV(text){
- text=text.replace(/^\uFEFF/,''); const rows=[]; let row=[],cur='',q=false;
- for(let i=0;i<text.length;i++){const ch=text[i]; if(q){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=ch} else if(ch==='"')q=true; else if(ch===','){row.push(cur);cur=''} else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur=''} else if(ch!=='\r')cur+=ch}
- if(cur!==''||row.length){row.push(cur);rows.push(row)} return rows.filter(r=>r.some(c=>String(c).trim()!==''))
+async function fetchAll(){
+  if(!USE_SUPABASE) return [...allLocal];
+  let rows=[], from=0; const step=1000;
+  while(true){ const r=await sb.from('items').select('*').order('created_at',{ascending:false}).range(from,from+step-1); if(r.error) throw r.error; rows=rows.concat((r.data||[]).map(toAppItem)); if((r.data||[]).length<step) break; from+=step; }
+  return rows;
 }
-$('importFile').onchange=e=>{const f=e.target.files[0]; if(!f)return; f.text().then(txt=>{
- try{const rows=parseCSV(txt); if(!rows.length)throw 0; let head=rows[0].map(h=>h.trim().toLowerCase()); let start=0, idx={};
- const aliases={name:0,category:1,quantity:2,qty:2,location:3,notes:4,price:5};
- if(head.some(h=>aliases[h]!==undefined)){head.forEach((h,i)=>{if(aliases[h]!==undefined&&idx[aliases[h]]===undefined)idx[aliases[h]]=i}); start=1} else HEADERS.forEach((h,i)=>idx[i]=i);
- let n=0; for(let r=start;r<rows.length;r++){const g=k=>rows[r][idx[k]]??''; const name=String(g(0)).trim(); if(!name)continue; items.push({id:Date.now()+'-'+r+'-'+Math.random().toString(16).slice(2),name,category:String(g(1)).trim(),qty:Math.max(0,parseInt(g(2))||0),location:String(g(3)).trim(),notes:String(g(4)).trim(),price:Number(String(g(5)).replace(/[^0-9.\-]/g,''))||0,photo:'',created:Date.now()+r}); n++}
- save(); render(); alert(n+' '+t('imported')); }catch(err){alert(t('importFail'))} e.target.value='';
+$('exportBtn').onclick=async ()=>{ try{ download('inventory-export.csv',toCSV(await fetchAll())); }catch(e){ alert(t('error')); } };
+$('tplBtn').onclick=()=>download('inventory-template.csv',HEADERS.join(',')+'\n'+'Example jacket,Clothing,1,Closet,"Good condition, size M",25.00\nExample headphones,Electronics,2,Box 1,"Tested and working",40.00\n');
+$('exportJsonBtn').onclick=async ()=>{ try{ const rows=await fetchAll(); download('inventory-full-backup.json',JSON.stringify({app:'inventory-app',version:1,exportedAt:new Date().toISOString(),items:rows},null,2),'application/json'); }catch(e){ alert(t('error')); } };
+function parseCSV(text){
+  text=text.replace(/^\uFEFF/,''); const rows=[]; let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const ch=text[i]; if(q){if(ch==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=ch} else if(ch==='"')q=true; else if(ch===','){row.push(cur);cur=''} else if(ch==='\n'){row.push(cur);rows.push(row);row=[];cur=''} else if(ch!=='\r')cur+=ch}
+  if(cur!==''||row.length){row.push(cur);rows.push(row)} return rows.filter(r=>r.some(c=>String(c).trim()!==''))
+}
+$('importFile').onchange=e=>{const f=e.target.files[0]; if(!f)return; f.text().then(async txt=>{
+  try{
+    const rows=parseCSV(txt); if(!rows.length) throw 0;
+    let head=rows[0].map(h=>h.trim().toLowerCase()); let start=0, idx={};
+    const aliases={name:0,category:1,quantity:2,qty:2,location:3,notes:4,price:5};
+    if(head.some(h=>aliases[h]!==undefined)){head.forEach((h,i)=>{if(aliases[h]!==undefined&&idx[aliases[h]]===undefined)idx[aliases[h]]=i}); start=1} else HEADERS.forEach((h,i)=>idx[i]=i);
+    const batch=[];
+    for(let r=start;r<rows.length;r++){const g=k=>rows[r][idx[k]]??''; const name=String(g(0)).trim(); if(!name)continue;
+      batch.push({name,category:String(g(1)).trim(),qty:Math.max(0,parseInt(g(2))||0),location:String(g(3)).trim(),notes:String(g(4)).trim(),price:Number(String(g(5)).replace(/[^0-9.\-]/g,''))||0,photo:''});}
+    if(USE_SUPABASE){
+      for(let i=0;i<batch.length;i+=100){ const chunk=batch.slice(i,i+100).map(b=>toDbRow({...b,id:crypto.randomUUID()})); const res=await sb.from('items').insert(chunk); if(res.error) throw res.error; }
+    } else {
+      batch.forEach((b,i)=>allLocal.push({id:Date.now()+'-'+i+'-'+Math.random().toString(16).slice(2),...b,created:Date.now()+i}));
+      saveLocal();
+    }
+    page=1; await refresh(); alert(batch.length+' '+t('imported'));
+  }catch(err){ console.error(err); alert(t('importFail')); }
+  e.target.value='';
+})};
+$('importJsonFile').onchange=e=>{const f=e.target.files[0]; if(!f)return; f.text().then(async txt=>{
+  try{
+    const data=JSON.parse(txt); const arr=Array.isArray(data)?data:data.items; if(!Array.isArray(arr)) throw 0;
+    const batch=arr.filter(x=>x&&x.name).map(x=>({name:String(x.name).trim(),category:String(x.category||'').trim(),qty:Math.max(0,parseInt(x.qty??x.quantity)||0),location:String(x.location||'').trim(),notes:String(x.notes||'').trim(),price:Number(x.price||0),photo:String(x.photo||x.photo_url||'')}));
+    if(USE_SUPABASE){
+      for(let i=0;i<batch.length;i+=100){ const chunk=batch.slice(i,i+100).map(b=>toDbRow({...b,id:crypto.randomUUID()})); const res=await sb.from('items').insert(chunk); if(res.error) throw res.error; }
+    } else {
+      batch.forEach((b,i)=>allLocal.push({id:Date.now()+'-j'+i+'-'+Math.random().toString(16).slice(2),...b,created:Date.now()+i}));
+      saveLocal();
+    }
+    page=1; await refresh(); alert(batch.length+' '+t('jsonImported'));
+  }catch(err){ console.error(err); alert(t('jsonFail')); }
+  e.target.value='';
 })};
 applyLang();
+refresh();
 </script>
 </body></html>
