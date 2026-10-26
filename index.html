@@ -130,7 +130,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 /* ================================================================ */
 const PAGE_SIZE = 50;
 const BUCKET = 'photos';
-const isSupabaseConfigured = SUPABASE_URL && SUPABASE_URL !== 'https://fcjefdejasssyapseitx.supabase.co' && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZjamVmZGVqYXNzc3lhcHNlaXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5MzYxNjksImV4cCI6MjEwODUxMjE2OX0.L2L2roaSdjvZ6TAawGvbQnOFQZ9dpQRAJq_NUTdUMr0' && typeof window.supabase !== 'undefined';
+const isSupabaseConfigured = SUPABASE_URL && SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY' && typeof window.supabase !== 'undefined';
 let sb = null;
 if (isSupabaseConfigured) { try { sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch (e) { sb = null; } }
 const USE_SUPABASE = !!sb;
